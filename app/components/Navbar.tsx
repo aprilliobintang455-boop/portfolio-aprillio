@@ -1,5 +1,5 @@
 "use client";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
@@ -14,6 +14,14 @@ const LINKS = [
   { label: "Kreator",    href: "/creator",     anchor: null,         pages: ["/creator"] },
 ];
 
+const DOT_SECTIONS = [
+  { id: "about",      label: "Tentang" },
+  { id: "experience", label: "Pengalaman" },
+  { id: "education",  label: "Pendidikan" },
+  { id: "contact",    label: "Kontak" },
+];
+
+// ── THEME TOGGLE ───────────────────────────────────
 function ThemeToggle({ size = "md" }: { size?: "md" | "sm" }) {
   const { colorTheme, toggleColorTheme } = useColorTheme();
   const [animating, setAnimating] = useState(false);
@@ -32,7 +40,6 @@ function ThemeToggle({ size = "md" }: { size?: "md" | "sm" }) {
       onClick={handleToggle}
       aria-label={`Switch to ${isGreen ? "orange" : "green"} theme`}
       title={`Switch to ${isGreen ? "orange" : "green"} theme`}
-      className=""
       style={{
         display: "inline-flex", alignItems: "center", gap: 6,
         padding: pad, borderRadius: 999,
@@ -57,7 +64,6 @@ function ThemeToggle({ size = "md" }: { size?: "md" | "sm" }) {
         flexShrink: 0,
         overflow: "hidden",
       }}>
-        {/* Ripple flash on click */}
         {animating && (
           <span style={{
             position: "absolute", inset: 0, borderRadius: 999,
@@ -66,7 +72,6 @@ function ThemeToggle({ size = "md" }: { size?: "md" | "sm" }) {
             pointerEvents: "none",
           }}/>
         )}
-        {/* Thumb */}
         <span style={{
           position: "absolute",
           left: isGreen ? 15 : 2,
@@ -95,12 +100,76 @@ function ThemeToggle({ size = "md" }: { size?: "md" | "sm" }) {
   );
 }
 
+// ── DOT NAVIGATION ────────────────────────────────
+function DotNav() {
+  const path = usePathname();
+  const [active, setActive] = useState("about");
+
+  useEffect(() => {
+    if (path !== "/") return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter(e => e.isIntersecting)
+          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+        if (visible) setActive(visible.target.id);
+      },
+      { threshold: [0.2, 0.5], rootMargin: "-20% 0px -20% 0px" }
+    );
+    DOT_SECTIONS.forEach(({ id }) => {
+      const el = document.getElementById(id);
+      if (el) observer.observe(el);
+    });
+    return () => observer.disconnect();
+  }, [path]);
+
+  if (path !== "/") return null;
+
+  return (
+    <div className="dot-nav hidden md:flex" role="navigation" aria-label="Section navigation">
+      {DOT_SECTIONS.map(({ id, label }, i) => (
+        <motion.div
+          key={id}
+          className="dot-nav-item"
+          initial={{ opacity: 0, x: 10 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: 0.6 + i * 0.08, duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+        >
+          <button
+            className={`dot-nav-btn${active === id ? " is-active" : ""}`}
+            onClick={() => document.getElementById(id)?.scrollIntoView({ behavior: "smooth" })}
+            aria-label={`Scroll to ${label}`}
+          />
+          <span className="dot-nav-tooltip">{label}</span>
+        </motion.div>
+      ))}
+    </div>
+  );
+}
+
+// ── MAIN NAVBAR ───────────────────────────────────
 export default function Navbar() {
   const [open, setOpen] = useState(false);
   const path = usePathname();
   const router = useRouter();
   const { colorTheme } = useColorTheme();
   const logoSrc = colorTheme === "green" ? "/images/logo-green.png" : "/images/logo.png";
+
+  // Magnetic bubble state
+  const linksRef = useRef<HTMLDivElement>(null);
+  const [bubble, setBubble] = useState({ left: 0, width: 0, visible: false });
+
+  const handleLinkEnter = (e: React.MouseEvent<HTMLElement>) => {
+    const container = linksRef.current;
+    if (!container) return;
+    const cr = container.getBoundingClientRect();
+    const lr = e.currentTarget.getBoundingClientRect();
+    setBubble({ left: lr.left - cr.left, width: lr.width, visible: true });
+  };
+
+  const handleLinksLeave = () => {
+    setBubble(prev => ({ ...prev, visible: false }));
+  };
 
   const scrollTo = (anchor: string, closeMenu = false) => {
     if (closeMenu) setOpen(false);
@@ -123,20 +192,39 @@ export default function Navbar() {
     const cls = `pill-nav-link${isActive ? " is-active" : ""}`;
     const mobileStyle = mobile ? { fontSize: 22, fontWeight: 700, padding: "10px 24px" } : undefined;
     if (l.anchor) {
-      return <button className={cls} style={mobileStyle} onClick={() => scrollTo(l.anchor!, mobile)}>{l.label}</button>;
+      return (
+        <button
+          className={cls}
+          style={mobileStyle}
+          onClick={() => scrollTo(l.anchor!, mobile)}
+          onMouseEnter={mobile ? undefined : handleLinkEnter}
+        >
+          {l.label}
+        </button>
+      );
     }
-    return <Link href={l.href} className={cls} style={mobileStyle} onClick={onClick}>{l.label}</Link>;
+    return (
+      <Link
+        href={l.href}
+        className={cls}
+        style={mobileStyle}
+        onClick={onClick}
+        onMouseEnter={mobile ? undefined : handleLinkEnter}
+      >
+        {l.label}
+      </Link>
+    );
   };
 
   return (
     <>
       {/* ── DESKTOP ── */}
       <header className="hidden md:flex"
-        style={{position:"fixed",top:20,left:0,right:0,zIndex:200,justifyContent:"center",pointerEvents:"none"}}>
+        style={{ position: "fixed", top: 20, left: 0, right: 0, zIndex: 200, justifyContent: "center", pointerEvents: "none" }}>
         <motion.nav
           initial={{ y: -72, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
-          transition={{ duration: .72, ease: [.22,1,.36,1], delay: .12 }}
+          transition={{ duration: .72, ease: [.22, 1, .36, 1], delay: .12 }}
           className="pill-nav"
           style={{ pointerEvents: "auto" }}
         >
@@ -144,7 +232,20 @@ export default function Navbar() {
             <img src={logoSrc} alt="Logo" className="logo-img" style={{ transition: "opacity .45s ease" }} />
           </button>
           <span className="pill-divider" />
-          {LINKS.map(l => <NavLink key={l.href} l={l} />)}
+
+          {/* Magnetic links group */}
+          <div ref={linksRef} className="nav-links-group" onMouseLeave={handleLinksLeave}>
+            <span
+              className="nav-magnetic-bubble"
+              style={{
+                left: bubble.left,
+                width: bubble.width,
+                opacity: bubble.visible ? 1 : 0,
+              }}
+            />
+            {LINKS.map(l => <NavLink key={l.href} l={l} />)}
+          </div>
+
           <span className="pill-divider" />
           <ThemeToggle />
           <span className="pill-divider" />
@@ -153,6 +254,9 @@ export default function Navbar() {
           </button>
         </motion.nav>
       </header>
+
+      {/* ── DOT NAVIGATION ── */}
+      <DotNav />
 
       {/* ── MOBILE ── */}
       <header className="md:hidden">
@@ -179,7 +283,7 @@ export default function Navbar() {
               initial={{ opacity: 0, y: -12 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -12 }}
-              transition={{ duration: .24, ease: [.22,1,.36,1] }}
+              transition={{ duration: .24, ease: [.22, 1, .36, 1] }}
               className="mobile-menu-overlay"
             >
               <button
@@ -195,7 +299,7 @@ export default function Navbar() {
                   key={l.href}
                   initial={{ opacity: 0, x: -14 }}
                   animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: i * 0.05, duration: .28, ease: [.22,1,.36,1] }}
+                  transition={{ delay: i * 0.05, duration: .28, ease: [.22, 1, .36, 1] }}
                 >
                   <NavLink l={l} mobile onClick={() => setOpen(false)} />
                 </motion.div>
@@ -218,4 +322,3 @@ export default function Navbar() {
     </>
   );
 }
-
